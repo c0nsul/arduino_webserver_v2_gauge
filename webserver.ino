@@ -18,15 +18,23 @@ int rotatorLeft = 8;
 int rotatorRight = 9;
 int switchOnOff = 7;
 
-int angel;
- 
-int newAzimuth = NULL;
+int angel, newAzimuth;
+
 String setDirection = "stop";
 bool powerStatusBool = false;
 
+//filter
+int analog_val;
+int val[3];
+int val_filter;
+byte index;
+String alarmMsg;
 
 void setup()
-{
+{    
+    alarmMsg = "";
+    newAzimuth = 180;
+    angel = 0;
     // disable Ethernet chip
     pinMode(10, OUTPUT);
     digitalWrite(10, HIGH);
@@ -58,11 +66,21 @@ void setup()
 
 void loop()
 {
-    //prevent uncontrolled rotation
-    sequreParams();
   
-    EthernetClient client = server.available();  // try to get client
+     //data
+     if (++index > 2) 
+        index = 0; // переключаем индекс с 0 до 2 (0, 1, 2, 0, 1, 2Е)
+     // read analog pin A0
+     val[index] = analogRead(0); // записываем значение с датчика в массив
+     // фильтровать медианным фильтром из 3Єх ѕќ—Ћ≈ƒЌ»’ измерений
+     analog_val = middle_of_3(val[0], val[1], val[2]);
+    //data end
 
+    //prevent uncontrolled rotation
+    alarmMsg = sequreParams();
+    
+    EthernetClient client = server.available();  // try to get client
+  
     if (client) {  // got client?
         boolean currentLineIsBlank = true;
         while (client.connected()) {
@@ -115,13 +133,12 @@ void loop()
                        digitalWrite (rotatorLeft, LOW);
                        digitalWrite (rotatorRight, LOW);
                        
-                    } else if (StrContains(HTTP_req, "azimuth"))   {
-                      String azimuth;
-                      //?????????????????????????
-                      //azimuth = HTTP_req.substring(HTTP_req.indexOf("azimuth")+8, HTTP_req.indexOf(" H"));                      
-                      newAzimuth = azimuth.toInt();
-                      if (!newAzimuth || newAzimuth >= 360 || newAzimuth <= 0){                        
-                        newAzimuth = NULL;
+                    } else if (StrContains(HTTP_req, "azimuth"))   {                       
+                                            
+                      newAzimuth = getAzimuth(HTTP_req);
+                      
+                      
+                      if (!newAzimuth || newAzimuth >= 360 || newAzimuth <= 0){                                                
                         setDirection = "stop";                        
                         digitalWrite (rotatorLeft, LOW);
                         digitalWrite (rotatorRight, LOW);    
@@ -135,9 +152,7 @@ void loop()
                           digitalWrite (rotatorRight, LOW);
                           digitalWrite (rotatorLeft, HIGH);
                         }
-                      }           
-                      client.print("NEW AZIMUTH:");
-                      client.print(newAzimuth);
+                      }  
                        
                     } else if (StrContains(HTTP_req, "ajax_inputs")) {
                       // remainder of header follows below, depending on if
@@ -149,8 +164,9 @@ void loop()
                         client.println();
                         // send XML file containing input states                        
                         XML_response(client);
-                    }
-                    else {  // web page request
+                    
+                    } else {  
+                        // web page request
                         // send rest of HTTP header
                         client.println(F("Content-Type: text/html"));
                         client.println(F("Connection: keep-alive"));
@@ -168,7 +184,7 @@ void loop()
                         client.println(F(".btn_small { -webkit-appearance: none; background-color:#dfe3ee; }"));
                         client.println(F(".active {width: 140px; height: 50px; font-size: 22px; -webkit-appearance: none; background-color:red; color:white }"));
                         client.println(F("</style>"));
-                        client.println(F("<script src=\"//cdn.rawgit.com/Mikhus/canvas-gauges/gh-pages/download/2.1.7/radial/gauge.min.js\"></script>"));                        
+                        client.println(F("<script src=\"//cdn.rawgit.com/Mikhus/canvas-gauges/gh-pages/download/2.1.7/radial/gauge.min.js\"></script>"));
                         client.println(F("<script>"));                        
                         client.println(F("var nocache = \"&nocache=\" + Math.random() * 1000000;"));
                         client.println(F("var request = new XMLHttpRequest();"));
@@ -179,26 +195,29 @@ void loop()
                         client.println(F("if (this.readyState == 4) {"));
                         client.println(F("if (this.status == 200) {"));
                         client.println(F("if (this.responseText != null) {"));
-                        client.println(F("document.getElementById(\"status_txt\").innerHTML = this.responseText;"));
+                        //client.println(F("document.getElementById(\"status_txt\").innerHTML = this.responseText;"));
                         client.println(F("}}}}"));
                         client.println(F("request.open(\"GET\", param +\"=\"+value + nocache, true);"));                        
-                        //???
-                        client.println(F("if (param == 'start' || param == 'finish'){ location.reload();}"));                        
+                        //???                        
                         client.println(F("request.send(null);"));
+                        client.println(F("if (param == 'start' || param == 'finish' || param == 'azimuth'){ setTimeout(location.reload(), 1500);}"));
                         client.println(F("}"));
                         client.println(F("</script>"));
                         client.println(F("</head>"));                        
-                        client.println(F("<h1>Ethernet Controller for antenna rotation</h1>"));
+                        client.println(F("<h1>Ethernet Controller G450A</h1>"));
                         //client.println(F("<p id=\"status_txt\">Awaiting...</p>"));                       
                         client.print(F("<br/><br/>"));
+
+                          if (alarmMsg.length() > 1) {
+                            client.println(F("<script>alert("));
+                            client.println(alarmMsg);
+                            client.println(F(")</script>"));
+                            alarmMsg = "";
+                          }
                         
                           if (!powerStatusBool) {
-                            client.println(F("<button class=\"btn\" onclick=\"doCmd('start')\">START</button>"));
-                          } else {
-                            //client.println(F("<button class=\"active\" onclick=\"doCmd('start')\">START</button>"));
-                          
-                          
-                                                  
+                            client.println(F("<button class=\"btn\" onclick=\"doCmd('start')\">START</button>"));                            
+                          } else {                                  
                                   if (setDirection.compareTo("left") == 0) {
                                      client.println(F("<button class=\"active\" id=\"btn_1\" onclick=\"doCmd('left')\">LEFT</button>"));
                                   } else {
@@ -216,26 +235,16 @@ void loop()
                                   } else {
                                      client.println(F("<button class=\"btn\" id=\"btn_3\" onclick=\"doCmd('right')\">RIGHT</button>"));
                                   }
-
-                                  if (!powerStatusBool) {
-                                    //client.println(F("<button class=\"active\" onclick=\"doCmd('finish')\">SHUTDOWN</button></div>"));
-                                  } else {
-                                    client.println(F("<button class=\"btn\" onclick=\"doCmd('finish')\">SHUTDOWN</button></div>"));
-                                  }
+                                  
+                                  client.println(F("<button class=\"btn\" onclick=\"doCmd('finish')\">SHUTDOWN</button></div>"));
                           
                                   client.println(F("<br/><br/>"));
-                                  client.println(F("New Azimuth: <input type=\"text\" value=180 id=\"azimuth_value\" /><button class=\"btn_small\" onclick=\"doCmd('azimuth')\" id=\"goBtn\">Go!</button>"));
-        
-                                  
-                                  client.print(F("<span style=\"font-size:50px\" align=\"center\">"));
-                                  if (newAzimuth > 0) {
-                                    client.print("Set: ");  
-                                    client.print(newAzimuth);  
-                                  } 
-                                  client.print(F("</span>"));
+                                  client.println(F("New Azimuth: <input type=\"text\" value="));                                                                     
+                                  client.println(newAzimuth > 0 ? newAzimuth : 180 );                                  
+                                  client.println(F(" id=\"azimuth_value\" /><button class=\"btn_small\" onclick=\"doCmd('azimuth')\" id=\"goBtn\">Go!</button>"));                                                                            
                         }
                         client.print(F("<br/><br/>"));
-                        delay(200);      // give the web browser time to receive the data
+                        delay(100);      // give the web browser time to receive the data
                         
                         
                         // send web page
@@ -266,7 +275,7 @@ void loop()
                 }
             } // end if (client.available())
         } // end while (client.connected())
-        delay(1);      // give the web browser time to receive the data
+        delay(100);      // give the web browser time to receive the data
         client.stop(); // close the connection
     } // end if (client)
 }
@@ -274,18 +283,32 @@ void loop()
 // send the XML file containing analog value
 void XML_response(EthernetClient cl)
 {
-    int analog_val;
-    
+        
     cl.print(F("<?xml version = \"1.0\" ?>"));
-    cl.print(F("<inputs>"));
-    // read analog pin A0
-    analog_val = analogRead(0);
+    cl.print(F("<inputs>"));        
     //angel fix
     angel = round(analog_val/1.9);
     cl.print(F("<analog>"));
     cl.print(angel);
     cl.print(F("</analog>"));
     cl.print(F("</inputs>"));
+}
+
+// медианный фильтр из 3Єх значений
+int middle_of_3(int a, int b, int c) {
+  int middle;
+  if ((a <= b) && (a <= c)) {
+    middle = (b <= c) ? b : c;
+  }
+  else {
+    if ((b <= a) && (b <= c)) {
+      middle = (a <= c) ? a : c;
+    }
+    else {
+      middle = (a <= b) ? a : b;
+    }
+  }
+  return middle;
 }
 
 // sets every element of str to 0 (clears array)
@@ -296,11 +319,23 @@ void StrClear(char *str, char length)
     }
 }
 
+int getAzimuth(char *str)
+{
+  char resultRow[3];  
+  int getAzimuth;
+  resultRow[0] = str[13];
+  resultRow[1] = str[14];
+  resultRow[2] = str[15];      
+  getAzimuth = atoi(resultRow);  
+  return getAzimuth;
+}
+
 // searches for the string sfind in the string str
 // returns 1 if string found
 // returns 0 if string not found
 char StrContains(char *str, char *sfind)
 {
+  
     char found = 0;
     char index = 0;
     char len;
@@ -326,24 +361,30 @@ char StrContains(char *str, char *sfind)
     return 0;
 }
 
-void sequreParams() {
-
+String sequreParams() {
+  String msg;
+ 
   //sequring  
-  if (angel >= 360 || angel <= 0) {
+  if (angel > 360 || angel < 0) {
+     msg = 'STOP: out of range!';
+     Serial.println("//STOP: out of range!");    
      setDirection = "stop";
      digitalWrite (rotatorLeft, LOW);
      digitalWrite (rotatorRight, LOW);
   }
-  
 
   //presession stop
   if (newAzimuth != NULL) {
     if ((setDirection.compareTo("left") == 0 && angel <= newAzimuth+3) || (setDirection.compareTo("right") == 0  && angel >= newAzimuth-3)) {
+      msg = 'STOP: stop afetr go!';
       Serial.println("//STOP after GO");    
       setDirection = "stop";     
       digitalWrite (rotatorLeft, LOW);
       digitalWrite (rotatorRight, LOW);    
     }
+  }
+
+  if (msg.length() > 1) {
+    return msg;
   }  
-  
 }
