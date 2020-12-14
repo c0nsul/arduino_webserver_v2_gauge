@@ -1,6 +1,6 @@
-<body onload="GetArduinoInputs();">
+<body onload="hideShow();" >
 
-<canvas id="canvas-id"></canvas>
+<canvas id="canvas-id" style="display: none"></canvas>
 
 <script>
 
@@ -52,12 +52,12 @@ var gauge = new RadialGauge({
     animationDuration: 1500,
     width: 300,
     height: 300
-}).draw();        
+}).draw();
 
-      
+
     
 function GetArduinoInputs()
-{       
+{
     nocache = "&nocache=" + Math.random() * 1000000;
     var request = new XMLHttpRequest();
     request.onreadystatechange = function()
@@ -71,8 +71,8 @@ function GetArduinoInputs()
         }
     }
     request.open("GET", "ajax_inputs" + nocache, true);
-    request.send(null);           
-    setTimeout('GetArduinoInputs()', 500);                
+    request.send(null);
+    setTimeout('GetArduinoInputs()', 500);
 
     if (typeof(data_val) !== 'undefined' && data_val >= 0) {    
        gauge.value = data_val;
@@ -80,7 +80,24 @@ function GetArduinoInputs()
     }    
 }      
 
+function hideShow () {
+    if (typeof(localStorage.status) !== 'undefined' &&  localStorage.status == 1) {
+        document.getElementById('canvas-id').style.display = 'block';
+        GetArduinoInputs();
+    } else {
+        document.getElementById('canvas-id').style.display = 'none';
+    }
+}
+
 function lightCheck(param){
+    if (param == 'start'){
+        localStorage.status = 1;
+        GetArduinoInputs();
+    }
+    if (param == 'finish'){
+        localStorage.status = 0;
+        document.getElementById('canvas-id').style.display = 'none';
+    }
    if (param == 'left'){
       document.getElementById("btn_1").classList.remove('btn');
       document.getElementById("btn_1").classList.add('active');
